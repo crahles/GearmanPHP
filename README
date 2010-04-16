@@ -1,0 +1,5 @@
+GearmanPHP is an attempt to provide a pure php implementation of the gearman php extension (http://php.net/gearman).
+
+ * Client & Task almost complete
+ * Worker & Job in progress
+ * Documentation & Examples in progress
