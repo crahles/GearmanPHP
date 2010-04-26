@@ -312,7 +312,7 @@ class GearmanPHP_Base_Common
                 $data .= socket_read($socket, $resp['len'] - self::stringLength($data));
             }
 
-            $d = explode("\x00", $data);
+            $d = explode("\x00", $data, count(self::$magic[$resp['type']][1]));
             foreach (self::$magic[$resp['type']][1] as $i => $a) {
                 $return[$a] = $d[$i];
             }
