@@ -141,7 +141,7 @@ class GearmanPHP_GearmanManager
         $workers = array();
         $tmp     = explode("\n", $res);
         foreach ($tmp as $t) {
-            if (!GearmanPHP_Base_Connection::stringLength($t)) {
+            if (!GearmanPHP_Base_Common::stringLength($t)) {
                 continue;
             }
 
@@ -212,7 +212,7 @@ class GearmanPHP_GearmanManager
         $status = array();
         $tmp    = explode("\n", $res);
         foreach ($tmp as $t) {
-            if (!GearmanPHP_Base_Connection::stringLength($t)) {
+            if (!GearmanPHP_Base_Common::stringLength($t)) {
                 continue;
             }
 
@@ -244,7 +244,7 @@ class GearmanPHP_GearmanManager
 
         fwrite($this->conn,
                $cmd . "\r\n",
-               GearmanPHP_Base_Connection::stringLength($cmd . "\r\n"));
+               GearmanPHP_Base_Common::stringLength($cmd . "\r\n"));
     }
 
     /**

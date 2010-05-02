@@ -343,7 +343,7 @@ class GearmanPHP_GearmanClient
      * @param string $context Data to be passed to the status callback, generally a reference to an array or object
      * @return GearmanPHP_GearmanTask
      */
-    public function addTaskStatus(string $job_handle, string $context = null)
+    public function addTaskStatus($job_handle, $context = null)
     {
 
     }
@@ -421,7 +421,7 @@ class GearmanPHP_GearmanClient
      * @param string $unique A unique ID used to identify a particular task
      * @return string The job handle for the submitted task.
      */
-    public function doHigh(string $function_name, string $workload, string $unique = null)
+    public function doHigh($function_name, $workload, $unique = null)
     {
         $task = $this->_getTask($function_name, $workload, null, $unique, 'SUBMIT_JOB_HIGH');
         $this->_tasks[$task->uniqueId] = $task;
@@ -437,7 +437,7 @@ class GearmanPHP_GearmanClient
      * @param string $unique A unique ID used to identify a particular task
      * @return string The job handle for the submitted task.
      */
-    public function doHighBackground(string $function_name, string $workload, string $unique = null)
+    public function doHighBackground($function_name, $workload, $unique = null)
     {
         $task = $this->_getTask($function_name, $workload, null, $unique, 'SUBMIT_JOB_HIGH_BG');
         $this->_tasks[$task->uniqueId] = $task;
@@ -453,7 +453,7 @@ class GearmanPHP_GearmanClient
      * @param string $unique A unique ID used to identify a particular task
      * @return string The job handle for the submitted task.
      */
-    public function doLow(string $function_name, string $workload, string $unique = null)
+    public function doLow($function_name, $workload, $unique = null)
     {
         $task = $this->_getTask($function_name, $workload, null, $unique, 'SUBMIT_JOB_LOW');
         $this->_tasks[$task->uniqueId] = $task;
@@ -469,7 +469,7 @@ class GearmanPHP_GearmanClient
      * @param string $unique A unique ID used to identify a particular task
      * @return string The job handle for the submitted task.
      */
-    public function doLowBackground(string $function_name, string $workload, string $unique = null)
+    public function doLowBackground($function_name, $workload, $unique = null)
     {
         $task = $this->_getTask($function_name, $workload, null, $unique, 'SUBMIT_JOB_LOW_BG');
         $this->_tasks[$task->uniqueId] = $task;
@@ -579,7 +579,7 @@ class GearmanPHP_GearmanClient
      * @param int $options The options to be removed (unset)
      * @return bool Always returns TRUE.
      */
-    public function removeOptions(int $options)
+    public function removeOptions($options)
     {
 
     }
@@ -601,8 +601,8 @@ class GearmanPHP_GearmanClient
      */
     public function runTasks()
     {
-        $this->_taskCount = count($this->_tasks);
-        $taskKeys   = array_keys($this->_tasks);
+        $this->_taskCount = $this->_getTasksArrayCount();
+        $taskKeys   = $this->_getTasksArrayKeys();
         $t          = 0;
 
         if ($this->_timeout !== null){
@@ -610,7 +610,6 @@ class GearmanPHP_GearmanClient
         } else {
             $socket_timeout = 10;
         }
-
         while (0 < $this->_taskCount) {
             if ($this->_timeout !== null) {
                 if (empty($start)) {
@@ -626,7 +625,7 @@ class GearmanPHP_GearmanClient
             if ($t < $this->_taskCount) {
                 $k = $taskKeys[$t];
                 $this->_submitTask($this->_tasks[$k]);
-                if (strpos($this->_tasks[$k]->type, "_BG") !== false) {
+                if (strpos($this->_tasks[$k]->command, "_BG") !== false) {
                     $this->_tasks[$k]->finished = true;
                     $this->_taskCount--;
                 }
@@ -921,7 +920,7 @@ class GearmanPHP_GearmanClient
                 $task->handle = $response['data']['handle'];
                 $task->known = true;
                 $task->running = true;
-                if (strpos($task->type, "_BG") !== false) {
+                if (strpos($task->command, "_BG") !== false) {
                     $task->finished = true;
                 }
                 $this->_handles[$task->handle] = $task->uniqueId;
@@ -972,5 +971,37 @@ class GearmanPHP_GearmanClient
         foreach ($this->_callbacks[$type] as $callback) {
             call_user_func($callback, $task);
         }
+    }
+
+    /**
+     * get count of all tasks not finished yet
+     *
+     * @return int count of tasks not finished yet
+     */
+    protected function _getTasksArrayCount()
+    {
+        $count = 0;
+        foreach ($this->_tasks as $task) {
+            if ($task->finished != true) {
+                $count++;
+            }
+        }
+        return $count;
+    }
+
+    /**
+     * get arraykeys (uniqueid) of all tasks not finished yet
+     *
+     * @return int arraykeys of tasks not finished yet
+     */
+    protected function _getTasksArrayKeys()
+    {
+        $keys = array();
+        foreach ($this->_tasks as $key => $task) {
+            if ($task->finished != true) {
+                $keys[] = $key;
+            }
+        }
+        return $keys;
     }
 }

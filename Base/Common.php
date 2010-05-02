@@ -293,7 +293,6 @@ class GearmanPHP_Base_Common
             return array();
         }
         $resp = @unpack('a4magic/Ntype/Nlen', $header);
-       // Zend_Debug::dump($resp);
 
         if (!count($resp) == 3) {
             throw new GearmanPHP_Base_Exception('Received an invalid response');

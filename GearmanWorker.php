@@ -260,7 +260,7 @@ class GearmanPHP_GearmanWorker
      */
     public function options()
     {
-        //TODO
+
     }
 
     /**
@@ -325,6 +325,7 @@ class GearmanPHP_GearmanWorker
                 return GearmanPHP_Base_Common::GEARMAN_WORK_FAIL;
             default:
                 return GearmanPHP_Base_Common::GEARMAN_SUCCESS;
+
         }
     }
 
@@ -403,7 +404,7 @@ class GearmanPHP_GearmanWorker
      */
     public function wait()
     {
-        //TODO
+
     }
 
     /**
@@ -422,7 +423,6 @@ class GearmanPHP_GearmanWorker
         while(count($this->_sockets) > 0) {
             foreach($this->_sockets as $key => $socket) {
                 $resp = GearmanPHP_Base_Common::getResponse($socket);
-
                 if ($resp['function'] == 'NO_JOB') {
                     //TODO: insert wait function here to toggle between blocking and non-blocking behaviour
                     GearmanPHP_Base_Common::sendCommand($socket, 'PRE_SLEEP');
@@ -437,7 +437,7 @@ class GearmanPHP_GearmanWorker
                 }
 
                 if ($resp['function'] != 'JOB_ASSIGN_UNIQ') {
-                    throw new GearmanPHP_Base_Exception("This shouldn't happen.");
+                    throw new GearmanPHP_Base_Exception("This shouldn't happen. (Got: " . $resp['function'] . ")");
                 }
                 echo "Server asked me to do '". $resp['data']['func'] . "'\n";
 
@@ -456,8 +456,7 @@ class GearmanPHP_GearmanWorker
                     }
                     $job->workload = $arg;
                 }
-                $result = call_user_func($this->_callbacks[$job->functionName], $job);
-                $job->sendComplete($result);
+                call_user_func($this->_callbacks[$job->functionName], $job);
                 $this->_lastReturnCode = $job->returnCode();
                 GearmanPHP_Base_Common::sendCommand($socket, 'GRAB_JOB_UNIQ');
             }
