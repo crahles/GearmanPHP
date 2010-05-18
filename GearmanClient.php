@@ -29,7 +29,7 @@
  * @package       GearmanPHP
  * @license       GNU LGPL (http://www.gnu.org/copyleft/lesser.html)
  */
-require_once 'Base/Connection.php';
+require_once 'Base/Common.php';
 require_once 'GearmanTask.php';
 /**
  * Represents a class for connecting to a Gearman job server and making
@@ -881,29 +881,29 @@ class GearmanPHP_GearmanClient
                 $task->result = $response['data']['result'];
                 $this->_taskCount--;
                 $task->running = false;
-                $task->lastReturnCode = GearmanPHP_Base_Common::GEARMAN_SUCCESS;
+                $task->lastReturnCode = GEARMAN_SUCCESS;
                 $this->_fireCallbacks($task, self::TASK_COMPLETE);
                 break;
             case 'WORK_STATUS':
                 $task->numerator = (int)$response['data']['numerator'];
                 $task->denominator = (int)$response['data']['denominator'];
-                $task->lastReturnCode = GearmanPHP_Base_Common::GEARMAN_WORK_STATUS;
+                $task->lastReturnCode = GEARMAN_WORK_STATUS;
                 $this->_fireCallbacks($task, self::TASK_STATUS);
                 break;
             case 'WORK_FAIL':
                 $this->_taskCount--;
                 $task->running = false;
-                $task->lastReturnCode = GearmanPHP_Base_Common::GEARMAN_WORK_FAIL;
+                $task->lastReturnCode = GEARMAN_WORK_FAIL;
                 $this->_fireCallbacks($task, self::TASK_FAIL);
                 break;
             case 'WORK_WARNING':
-                $task->lastReturnCode = GearmanPHP_Base_Common::GEARMAN_WORK_WARNING;
+                $task->lastReturnCode = GEARMAN_WORK_WARNING;
                 $this->_fireCallbacks($task, self::TASK_WARNING);
                 break;
             case 'WORK_EXCEPTION':
                 $this->_taskCount--;
                 $task->running = false;
-                $task->lastReturnCode = GearmanPHP_Base_Common::GEARMAN_WORK_EXCEPTION;
+                $task->lastReturnCode = GEARMAN_WORK_EXCEPTION;
                 $this->_fireCallbacks($task, self::TASK_EXCEPTION);
                 break;
             case 'WORK_DATA':
@@ -912,7 +912,7 @@ class GearmanPHP_GearmanClient
                 } else {
                     $task->result = null;
                 }
-                $task->lastReturnCode = GearmanPHP_Base_Common::GEARMAN_WORK_DATA;
+                $task->lastReturnCode = GEARMAN_WORK_DATA;
                 $this->_fireCallbacks($task, self::TASK_DATA);
                 break;
             case 'JOB_CREATED':

@@ -29,6 +29,7 @@
  * @package       GearmanPHP
  * @license       GNU LGPL (http://www.gnu.org/copyleft/lesser.html)
  */
+require_once 'Constants.php';
 require_once 'Exception.php';
 /**
  * Represents a class for connecting to a Gearman job server and making
@@ -40,16 +41,6 @@ require_once 'Exception.php';
  */
 class GearmanPHP_Base_Common
 {
-    /**
-     * A list of valid Gearman return types
-     */
-    const GEARMAN_SUCCESS        = 0;
-    const GEARMAN_IO_WAIT        = 1;
-    const GEARMAN_WORK_DATA      = 20;
-    const GEARMAN_WORK_WARNING   = 21;
-    const GEARMAN_WORK_STATUS    = 22;
-    const GEARMAN_WORK_EXCEPTION = 23;
-    const GEARMAN_WORK_FAIL      = 24;
 
     /**
      * A list of valid Gearman commands

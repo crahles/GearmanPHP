@@ -29,7 +29,8 @@
  * @package       GearmanPHP
  * @license       GNU LGPL (http://www.gnu.org/copyleft/lesser.html)
  */
-
+require_once 'Base/Common.php';
+require_once 'GearmanJob.php';
 /**
  * Represents a class for connecting to a Gearman job server and making
  * requests to perform some function on provided data. The function performed
@@ -40,6 +41,13 @@
  */
 class GearmanPHP_GearmanWorker
 {
+
+    /**
+     * Unique id for this worker
+     *
+     * @var string $id
+     */
+    protected $_workerId = "";
 
    /**
      * Our randomly selected connection
@@ -56,11 +64,18 @@ class GearmanPHP_GearmanWorker
     protected $_servers = array();
 
     /**
+     * Pool of retry connections
+     *
+     * @var array $conn
+     */
+    protected $_retryServers = array();
+
+    /**
      * The timeout for Gearman connections
      *
      * @var integer $timeout
      */
-    protected $_timeout = 1000;
+    protected $_connectionTimeout = 1000;
 
     /**
      * Callbacks registered
@@ -74,6 +89,10 @@ class GearmanPHP_GearmanWorker
 
     protected $_lastReturnCode = null;
 
+    protected $_workerFunctions = array();
+
+    protected $_workerOptions = array();
+
     /**
      * Creates a GearmanClient instance representing a client that connects
      * to the job server and submits tasks to complete.
@@ -81,7 +100,9 @@ class GearmanPHP_GearmanWorker
      * @return GearmanPHP_GearmanClient
      */
     public function  __construct()
-    {}
+    {
+        $this->_workerId = "pid_".getmypid()."_".uniqid();
+    }
 
     /**
      * Create a copy of a GearmanClient object
@@ -114,15 +135,26 @@ class GearmanPHP_GearmanWorker
      */
     protected function _openConnections()
     {
+
         foreach($this->_servers as $serverKey => $serverEntry) {
-            $socket = null;
             $server = $serverEntry['host'] . ':' . $serverEntry['port'];
-            $socket = GearmanPHP_Base_Common::connect($server, $this->_timeout);
-            if (GearmanPHP_Base_Common::isConnected($socket)) {
-                GearmanPHP_Base_Common::addErrorCallback(array($this, 'errorCallback'));
-                $this->_sockets[] = $socket;
+            if (!isset($this->_sockets[$server]) || !is_resource($this->_sockets[$server])) {
+                try {
+                    $socket = null;
+                    $socket = GearmanPHP_Base_Common::connect($server, $this->_connectionTimeout);
+
+                    GearmanPHP_Base_Common::sendCommand($socket, "SET_CLIENT_ID", array("client_id" => $this->_workerId));
+
+                    if (GearmanPHP_Base_Common::isConnected($socket)) {
+                        GearmanPHP_Base_Common::addErrorCallback(array($this, 'errorCallback'));
+                        $this->_sockets[$server] = $socket;
+                    }
+
+                } catch (GearmanPHP_Base_Exception $e) {
+
+                    $this->retryServers[$server] = time();
+                }
             }
-            unset($this->_servers[$serverKey]);
         }
     }
 
@@ -152,11 +184,16 @@ class GearmanPHP_GearmanWorker
      *
      * @since 0.5.0
      */
-    public function addFunction($function_name , $function , &$context = null, $timeout = null)
+    public function addFunction($function_name , $function , &$context = null, $timeout = 0)
     {
         $this->_openConnections();
-        $this->register($function_name, $timeout);
-        $this->_callbacks[$function_name] = $function;
+
+        if($this->register($function_name, $timeout)) {
+            $this->_workerFunctions[$function_name] = $timeout;
+            $this->_callbacks[$function_name] = $function;
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -167,7 +204,8 @@ class GearmanPHP_GearmanWorker
      */
     public function addOptions($option)
     {
-
+        $this->_workerOptions[$option] = 1;
+        return true;
     }
 
     /**
@@ -221,7 +259,7 @@ class GearmanPHP_GearmanWorker
             'text' => json_encode($workload)
         );
 
-        $socket = $this->_openConnections();
+        $this->_openConnections();
         foreach($this->_sockets as $socket) {
             GearmanPHP_Base_Common::sendCommand($socket, 'ECHO_REQ', $params);
             $response = GearmanPHP_Base_Common::getResponse($socket);
@@ -275,20 +313,25 @@ class GearmanPHP_GearmanWorker
      */
     public function register($function_name, $timeout = 0)
     {
-        if($timeout == 0) {
-            $gmFunction = 'CAN_DO';
-            $params = array('func' => $function_name);
-        } else {
-            $gmFunction = 'CAN_DO_TIMEOUT';
+        $this->_openConnections();
+
+        if(is_int($timeout) && $timeout > 0) {
+            $command = 'CAN_DO_TIMEOUT';
             $params = array('func' => $function_name, 'timeout' => $timeout);
+        } else {
+            $command = 'CAN_DO';
+            $params = array('func' => $function_name);
         }
 
-        $return = true;
         foreach ($this->_sockets as $socket) {
-            $return = GearmanPHP_Base_Common::sendCommand($socket, $gmFunction, $params);
-            if ($return != true) break;
+            try {
+                GearmanPHP_Base_Common::sendCommand($socket, $command, $params);
+            } catch (GearmanPHP_Base_Exception $e) {
+                echo $e->getMessage();
+                return false;
+            }
         }
-        return $return;
+        return true;
     }
 
     /**
@@ -299,7 +342,8 @@ class GearmanPHP_GearmanWorker
      */
     public function removeOptions($option)
     {
-
+        $this->_workerOptions[$option] = null;
+        return true;
     }
 
     /**
@@ -312,19 +356,23 @@ class GearmanPHP_GearmanWorker
         switch ($this->_lastReturnCode) {
 
             case 'GEARMAN_IO_WAIT':
-                return GearmanPHP_Base_Common::GEARMAN_IO_WAIT;
+                return GEARMAN_IO_WAIT;
             case 'GEARMAN_WORK_DATA':
-                return GearmanPHP_Base_Common::GEARMAN_WORK_DATA;
+                return GEARMAN_WORK_DATA;
             case 'GEARMAN_WORK_WARNING':
-                return GearmanPHP_Base_Common::GEARMAN_WORK_WARNING;
+                return GEARMAN_WORK_WARNING;
             case 'GEARMAN_WORK_STATUS':
-                return GearmanPHP_Base_Common::GEARMAN_WORK_STATUS;
+                return GEARMAN_WORK_STATUS;
             case 'GEARMAN_WORK_EXCEPTION':
-                return GearmanPHP_Base_Common::GEARMAN_WORK_EXCEPTION;
+                return GEARMAN_WORK_EXCEPTION;
             case 'GEARMAN_WORK_FAIL':
-                return GearmanPHP_Base_Common::GEARMAN_WORK_FAIL;
+                return GEARMAN_WORK_FAIL;
+            case 'GEARMAN_NO_ACTIVE_FDS':
+                return GEARMAN_NO_ACTIVE_FDS;
+            case 'GEARMAN_NO_JOBS':
+                return GEARMAN_NO_JOBS;
             default:
-                return GearmanPHP_Base_Common::GEARMAN_SUCCESS;
+                return GEARMAN_SUCCESS;
 
         }
     }
@@ -337,7 +385,8 @@ class GearmanPHP_GearmanWorker
      */
     public function setOptions($option)
     {
-
+        $this->_workerOptions[$option] = 1;
+        return true;
     }
 
     /**
@@ -348,7 +397,7 @@ class GearmanPHP_GearmanWorker
      */
     public function setTimeout($timeout)
     {
-        $this->_timeout = $timeout;
+        $this->_connectionTimeout = $timeout;
         return true;
     }
 
@@ -359,7 +408,7 @@ class GearmanPHP_GearmanWorker
      */
     public function timeout()
     {
-        return $this->_timeout;
+        return $this->_connectionTimeout;
     }
 
     /**
@@ -377,6 +426,7 @@ class GearmanPHP_GearmanWorker
             $return = GearmanPHP_Base_Common::sendCommand($socket, 'CANT_DO', $params);
             if ($return != true) break;
         }
+        unset($this->_workerFunctions[$function_name]);
         return $return;
     }
 
@@ -392,6 +442,7 @@ class GearmanPHP_GearmanWorker
             $return = GearmanPHP_Base_Common::sendCommand($socket, 'RESET_ABILITIES', array());
             if ($return != true) break;
         }
+        $this->_workerFunctions = array();
         return $return;
     }
 
@@ -405,6 +456,18 @@ class GearmanPHP_GearmanWorker
     public function wait()
     {
 
+        foreach ($this->_sockets as $server => $socket) {
+            GearmanPHP_Base_Common::close($socket);
+            unset($this->_sockets[$server]);
+        }
+
+        if (count($this->_sockets) == 0) {
+            $this->_lastReturnCode = 'GEARMAN_NO_ACTIVE_FDS';
+            return false;
+        } else {
+            $this->_lastReturnCode = 'GEARMAN_NO_ACTIVE_FDS';
+            return false;
+        }
     }
 
     /**
@@ -416,50 +479,133 @@ class GearmanPHP_GearmanWorker
      */
     public function work()
     {
-        foreach($this->_sockets as $socket) {
-            GearmanPHP_Base_Common::sendCommand($socket, 'GRAB_JOB_UNIQ');
-        }
+        $write       = null;
+        $except      = null;
+        $sleep       = true;
+        $currentTime = time();
+        $retryTime   = 5;
+        $socketBlock = ($this->_workerOptions[GEARMAN_WORKER_NON_BLOCKING] == 1)?0:null;
 
-        while(count($this->_sockets) > 0) {
-            foreach($this->_sockets as $key => $socket) {
-                $resp = GearmanPHP_Base_Common::getResponse($socket);
-                if ($resp['function'] == 'NO_JOB') {
-                    //TODO: insert wait function here to toggle between blocking and non-blocking behaviour
-                    GearmanPHP_Base_Common::sendCommand($socket, 'PRE_SLEEP');
-                    echo "No Jobs for me, going to sleep. Server should wake me up.\n";
-                    continue;
-                }
-
-                if ($resp['function'] == 'NOOP') {
-                    echo "Server kicked me, will ask why.\n";
-                    GearmanPHP_Base_Common::sendCommand($socket, 'GRAB_JOB_UNIQ');
-                    $resp = GearmanPHP_Base_Common::getResponse($socket);
-                }
-
-                if ($resp['function'] != 'JOB_ASSIGN_UNIQ') {
-                    throw new GearmanPHP_Base_Exception("This shouldn't happen. (Got: " . $resp['function'] . ")");
-                }
-                echo "Server asked me to do '". $resp['data']['func'] . "'\n";
-
-                $job = new GearmanPHP_GearmanJob();
-                $job->socket = $socket;
-                $job->functionName = $resp['data']['func'];
-                $job->handle = $resp['data']['handle'];
-                $job->uuid = $resp['data']['uniq'];
-
-                $arg = array();
-                if (isset($resp['data']['arg']) &&
-                    GearmanPHP_Base_Common::stringLength($resp['data']['arg'])) {
-                    $arg = json_decode($resp['data']['arg'], true);
-                    if($arg === null){
-                        $arg = $resp['data']['arg'];
-                    }
-                    $job->workload = $arg;
-                }
-                call_user_func($this->_callbacks[$job->functionName], $job);
-                $this->_lastReturnCode = $job->returnCode();
-                GearmanPHP_Base_Common::sendCommand($socket, 'GRAB_JOB_UNIQ');
+        if ($this->_workerOptions[GEARMAN_WORKER_NON_BLOCKING] == 1) {
+            $this->_openConnections();
+            foreach ($this->_workerFunctions as $function_name => $timeout) {
+                $this->register($function_name, $timeout);
             }
         }
+
+        foreach ($this->_sockets as $server => $socket) {
+            try {
+                $worked = $this->_getJobAndRun($socket);
+            } catch (GearmanPHP_Base_Exception $e) {
+                unset($this->_sockets[$server]);
+                $this->_retryServers[$server] = $currentTime;
+            }
+
+            if ($worked) {
+                $sleep   = false;
+            } elseif ($this->_workerOptions[GEARMAN_WORKER_NON_BLOCKING] == 1) {
+                return false;
+            }
+        }
+
+        if ($sleep && count($this->_sockets)) {
+            foreach ($this->_sockets as $socket) {
+                GearmanPHP_Base_Common::sendCommand($socket, 'PRE_SLEEP');
+            }
+            $this->_lastReturnCode = 'GEARMAN_SUCCESS';
+            $read = $this->_sockets;
+            socket_select($read, $write, $except, $socketBlock);
+        }
+
+        $retryChange = false;
+        foreach ($this->_retryServers as $serverEntry => $lastTry) {
+            if (($lastTry + $retryTime) < $currentTime) {
+                try {
+                    $socket = GearmanPHP_Base_Common::connect($serverEntry);
+                    $this->_sockets[$serverEntry] = $socket;
+                    $retryChange = true;
+                    unset($this->_retryServers[$serverEntry]);
+                    GearmanPHP_Base_Common::sendCommand($socket, "SET_CLIENT_ID", array("client_id" => $this->_workerId));
+                } catch (GearmanPHP_Base_Exception $e) {
+                    $this->_retryServers[$serverEntry] = $currentTime;
+                }
+            }
+        }
+
+        if (count($this->_sockets) == 0) {
+            // sleep to avoid wasted cpu cycles if no connections to block on using socket_select
+            sleep(1);
+        }
+
+        if ($retryChange === true) {
+            // broadcast all abilities to all servers
+            foreach ($this->_workerFunctions as $function_name => $timeout) {
+                $this->register($function_name, $timeout);
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Listen on the socket for work
+     *
+     * Sends the 'GRAB_JOB_UNIQ' command and then listens for either the 'NOOP' or
+     * the 'NO_JOB' command to come back. If the 'JOB_ASSIGN_UNIQ' comes down the
+     * pipe then we run that job.
+     *
+     * @param resource $socket The socket to work on
+     *
+     * @return boolean Returns true if work was done, false if not
+     * @throws GearmanPHP_Base_Exception
+     * @see GearmanPHP_Base_Common::sendCommand()
+     */
+    protected function _getJobAndRun($socket)
+    {
+        GearmanPHP_Base_Common::sendCommand($socket, 'GRAB_JOB_UNIQ');
+
+        $resp = array('function' => 'NOOP');
+        while (count($resp) && $resp['function'] == 'NOOP') {
+            $resp = GearmanPHP_Base_Common::blockingRead($socket);
+        }
+
+        if ($resp['function'] == 'NO_JOB') {
+            $this->_lastReturnCode = 'GEARMAN_NO_JOBS';
+            return false;
+        } elseif ($resp['function'] == 'NOOP') {
+            $this->_lastReturnCode = 'GEARMAN_IO_WAIT';
+            return true;
+        }
+
+        if ($resp['function'] != 'JOB_ASSIGN_UNIQ') {
+            throw new GearmanPHP_Base_Exception('Holy Cow! What are you doing?!');
+        }
+
+        $job = new GearmanPHP_GearmanJob();
+        $job->socket = $socket;
+        $job->functionName = $resp['data']['func'];
+        $job->handle = $resp['data']['handle'];
+        $job->uuid = $resp['data']['uniq'];
+
+        $arg = array();
+        if (isset($resp['data']['arg']) &&
+            GearmanPHP_Base_Common::stringLength($resp['data']['arg'])) {
+            $arg = json_decode($resp['data']['arg'], true);
+            if($arg === null){
+                $arg = $resp['data']['arg'];
+            }
+            $job->workload = $arg;
+        }
+        try {
+            $result = call_user_func($this->_callbacks[$job->functionName], $job);
+        } catch (Exception $e) {
+            $job->sendFail();
+        }
+        $job->sendComplete($result);
+        $this->_lastReturnCode = $job->returnCode();
+
+        // Force the job's destructor to run
+        $job = null;
+
+        return true;
     }
 }

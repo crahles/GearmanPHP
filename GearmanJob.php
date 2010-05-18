@@ -29,7 +29,7 @@
  * @package       GearmanPHP
  * @license       GNU LGPL (http://www.gnu.org/copyleft/lesser.html)
  */
-
+require_once 'Base/Common.php';
 /**
  * Represents a class for connecting to a Gearman job server and making
  * requests to perform some function on provided data. The function performed
